@@ -1,0 +1,57 @@
+---
+- hosts: dockerserver
+# sudo: true
+  become: yes
+  become_method: sudo
+
+  pre_tasks:
+
+    - name: Add /etc/hosts vagrant environment nodes
+      lineinfile: dest=/etc/hosts
+                  line={{ item.line }}
+                  insertafter={{ item.insertafter }}
+      with_items:
+        - { line: "# vagrant environment nodes",                 insertafter: EOF }
+        - { line: "192.168.56.155  dockerserver.local.internal", insertafter: "^# vagrant environment nodes" }
+        - { line: "192.168.56.156  client.local.internal",       insertafter: '^192.168.56.155  dockerserver.local.internal' }
+
+    - name: Update APT package cache
+      action: apt update_cache=yes
+
+    - name: Install pip
+      apt:
+        pkg: "{{ item }}"
+        state: installed
+      with_items:
+        - python-dev
+        - python-pip
+
+    - name: Install Docker-py
+      pip:
+        name: docker-py
+
+  roles:
+     - { role: docker }
+     -   role: 'nginx'
+         nginx_conf: |
+           user root;
+           worker_processes 1;
+
+           error_log /var/log/nginx/error.log warn;
+           pid /var/run/nginx.pid;
+
+           events {
+               worker_connections  1024;
+           }
+
+           http {
+               include       /etc/nginx/mime.types;
+               default_type  application/octet-stream;
+               log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                                 '$status $body_bytes_sent "$http_referer" '
+                                 '"$http_user_agent" "$http_x_forwarded_for"';
+               access_log  /var/log/nginx/access.log  main;
+               sendfile        on;
+               keepalive_timeout  65;
+               include /etc/nginx/conf.d/*.conf;
+           }
